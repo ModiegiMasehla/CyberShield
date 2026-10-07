@@ -1,0 +1,21 @@
+# API Quick Reference
+
+- `GET /api/v1/health`
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/mfa/setup`
+- `POST /api/v1/auth/mfa/enable`
+- `GET /api/v1/dashboard`
+- `POST /api/v1/tools/password/analyze`
+- `GET /api/v1/tools/network/info`
+- `POST /api/v1/tools/network/scan`
+- `GET /api/v1/tools/dns/{domain}`
+- `POST /api/v1/tools/url/analyze`
+- `POST /api/v1/tools/web/headers`
+- `POST /api/v1/tools/logs/analyze`
+- `GET /api/v1/alerts`
+- `GET /api/v1/incidents`
+- `POST /api/v1/incidents`
+- `PATCH /api/v1/incidents/{incident_id}`
+- `GET /api/v1/vulnerabilities`
+- `GET /api/v1/reports/security.pdf`
