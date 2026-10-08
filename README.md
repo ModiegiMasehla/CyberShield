@@ -1,3 +1,5 @@
+Verification Code: WTC-UTTW7KHZ
+
 # CyberShield
 ### A Practical Cybersecurity Fundamentals & Security Monitoring Platform
 
