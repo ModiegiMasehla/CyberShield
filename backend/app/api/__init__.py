@@ -39,7 +39,7 @@ def login(data:LoginIn, db:Session=Depends(get_db)):
             if user.failed_logins >= 5: user.locked_until=datetime.now(timezone.utc)+timedelta(minutes=15)
             db.commit()
         raise HTTPException(401,"Invalid credentials")
-    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+    if user.locked_until and user.locked_until.replace(tzinfo=user.locked_until.tzinfo or timezone.utc) > datetime.now(timezone.utc):
         raise HTTPException(423,"Account temporarily locked")
     if user.mfa_enabled:
         if not data.otp or not verify_totp(user.mfa_secret,data.otp):
@@ -81,7 +81,9 @@ def net_info(user=Depends(current_user)): return network_info()
 @router.post("/tools/network/scan")
 async def net_scan(data:PortScanIn,user=Depends(require_roles(Role.ADMIN,Role.SECURITY_ANALYST))):
     if data.start_port>data.end_port: raise HTTPException(400,"Invalid port range")
-    return {"target":data.target,"ports":await scan_ports(data.target,data.start_port,data.end_port)}
+    try: ports=await scan_ports(data.target,data.start_port,data.end_port)
+    except ValueError as e: raise HTTPException(400,str(e))
+    return {"target":data.target,"ports":ports}
 
 @router.get("/tools/dns/{domain}")
 def dns(domain:str,user=Depends(current_user)):
