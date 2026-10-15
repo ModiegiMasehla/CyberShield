@@ -1,0 +1,10 @@
+https://example.com
+https://www.wethinkcode.co.za/about
+http://example.com/login
+http://192.168.1.5/login?redirect=http://evil.com%2Fx
+https://secure.login.account.verify.bank.example.com/signin
+https://example.com/redirect?url=https://other.example.org
+https://user@example.com/reset
+https://xn--exmple-cua.com/login
+ftp://files.example.com/data
+not-a-url
