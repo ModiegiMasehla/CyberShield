@@ -1,0 +1,7 @@
+Oct 07 09:00:00 cyberlab sshd[101]: Accepted password for modiegi from 192.168.56.31 port 50001 ssh2
+Oct 07 09:01:00 cyberlab sshd[101]: Failed password for modiegi from 192.168.56.31 port 50002 ssh2
+Oct 07 09:02:00 cyberlab sshd[101]: Failed password for modiegi from 192.168.56.31 port 50003 ssh2
+Oct 07 09:03:00 cyberlab sshd[101]: Failed password for modiegi from 192.168.56.31 port 50004 ssh2
+Oct 07 09:04:00 cyberlab sshd[101]: Failed password for modiegi from 192.168.56.31 port 50005 ssh2
+Oct 07 09:05:00 cyberlab sshd[101]: Accepted password for modiegi from 192.168.56.31 port 50006 ssh2
+Oct 07 09:06:00 cyberlab sshd[101]: Accepted password for analyst from 192.168.56.40 port 50100 ssh2
