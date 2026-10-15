@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cybershield
+      POSTGRES_USER: cybershield
+      POSTGRES_PASSWORD: cybershield
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cybershield -d cybershield"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://cybershield:cybershield@postgres:5432/cybershield
+      SECRET_KEY: ${SECRET_KEY:-development-only-change-me}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    environment:
+      VITE_API_URL: http://localhost:8000/api/v1
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+volumes:
+  postgres_data:
