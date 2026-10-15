@@ -1,0 +1,10 @@
+# Allowed by the safe scanner (loopback / private only)
+127.0.0.1
+192.168.56.10
+10.0.0.5
+# Must be REJECTED with HTTP 400 (public addresses)
+8.8.8.8
+203.0.113.10
+# Must be REJECTED (not an IP address in safe lab mode)
+localhost
+example.com
