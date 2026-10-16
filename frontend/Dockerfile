@@ -1,4 +1,4 @@
-FROM node:22-alpine
+FROM node:25-alpine
 # Pull in OS security fixes and a current npm (the npm bundled with the base image carries older dependencies).
 RUN apk upgrade --no-cache && npm install -g npm@11
 WORKDIR /app
