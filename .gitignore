@@ -1,1 +1,20 @@
+.env
 .venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.db
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+
+# keep the fictional lab sample logs (they would otherwise match *.log)
+!security-lab/sample-logs/*.log
+coverage.xml
+.coverage
+bandit-report.*
+*.sarif
