@@ -21,20 +21,23 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      AUTO_CREATE_SCHEMA: "false"
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
 
   frontend:
     build: ./frontend
     environment:
       VITE_API_URL: http://localhost:8000/api/v1
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
 
 volumes:
   postgres_data:
