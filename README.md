@@ -91,9 +91,6 @@ bandit -r backend/app -ll
 pip-audit -r backend/requirements.txt
 ```
 
-## CI/CD (GitHub Actions)
-
-`.github/workflows/devsecops.yml` runs on every push/PR to `main` or `develop` and weekly: Ruff, pytest + coverage gate, Alembic check, frontend typecheck/build, Gitleaks, Bandit, CodeQL, pip-audit, npm audit, dependency review (PRs), Trivy filesystem and image scans, a Docker Compose smoke test and a final gate job. Actions are pinned to commit SHAs and kept current by Dependabot.
 
 ## Demo credentials
 
