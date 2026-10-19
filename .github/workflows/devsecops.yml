@@ -268,7 +268,7 @@ jobs:
           image-ref: cybershield-${{ matrix.service }}:${{ github.sha }}
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          exit-code: "1"
+          exit-code: "3"
           format: table
           output: trivy-${{ matrix.service }}.txt
       - name: Show Trivy findings
