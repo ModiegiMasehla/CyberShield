@@ -192,6 +192,9 @@ jobs:
   iac-and-fs-scan:
     name: Filesystem / IaC scan (Trivy)
     runs-on: ubuntu-latest
+    env:
+      TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2
+      TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1
     permissions:
       contents: read
       security-events: write
@@ -199,6 +202,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Gate: findings are printed as a table in this job's log, and HIGH/CRITICAL fail the job.
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
@@ -206,8 +210,32 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+          format: table
+          output: trivy-fs.txt
+      - name: Show Trivy findings
+        if: always()
+        run: |
+          { echo '### Trivy filesystem findings'; echo '```'; cat trivy-fs.txt 2>/dev/null || echo 'no report file (see the Trivy step log for the error)'; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+      # Report: same scan as SARIF for the Security tab; never fails the job.
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        if: always()
+        with:
+          scan-type: fs
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          limit-severities-for-sarif: true
+          ignore-unfixed: true
+          exit-code: "0"
           format: sarif
           output: trivy-fs.sarif
+      - name: Upload Trivy SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-fs-sarif
+          path: |
+            trivy-fs.sarif
+            trivy-fs.txt
       - uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         with:
@@ -219,6 +247,9 @@ jobs:
     name: Build and scan Docker images
     runs-on: ubuntu-latest
     needs: [backend-tests, frontend-build, sast-bandit, secret-scan]
+    env:
+      TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2
+      TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1
     permissions:
       contents: read
       security-events: write
@@ -238,8 +269,30 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+          format: table
+          output: trivy-${{ matrix.service }}.txt
+      - name: Show Trivy findings
+        if: always()
+        run: |
+          { echo '### Trivy image findings: ${{ matrix.service }}'; echo '```'; cat trivy-${{ matrix.service }}.txt 2>/dev/null || echo 'no report file (see the Trivy step log for the error)'; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        if: always()
+        with:
+          image-ref: cybershield-${{ matrix.service }}:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          limit-severities-for-sarif: true
+          ignore-unfixed: true
+          exit-code: "0"
           format: sarif
           output: trivy-${{ matrix.service }}.sarif
+      - name: Upload Trivy SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-${{ matrix.service }}-sarif
+          path: |
+            trivy-${{ matrix.service }}.sarif
+            trivy-${{ matrix.service }}.txt
       - uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         with:
