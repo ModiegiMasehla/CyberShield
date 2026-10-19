@@ -282,7 +282,7 @@ jobs:
           severity: HIGH,CRITICAL
           limit-severities-for-sarif: true
           ignore-unfixed: true
-          exit-code: "0"
+          exit-code: "3"
           format: sarif
           output: trivy-${{ matrix.service }}.sarif
       - name: Upload Trivy SARIF artifact
