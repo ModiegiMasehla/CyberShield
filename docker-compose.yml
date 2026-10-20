@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: cybershield
       POSTGRES_USER: cybershield
-      POSTGRES_PASSWORD: cybershield
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cybershield}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cybershield -d cybershield"]
       interval: 5s
@@ -16,12 +16,20 @@ services:
   backend:
     build: ./backend
     environment:
-      DATABASE_URL: postgresql+psycopg://cybershield:cybershield@postgres:5432/cybershield
+      DATABASE_URL: postgresql+psycopg://cybershield:${POSTGRES_PASSWORD:-cybershield}@postgres:5432/cybershield
       SECRET_KEY: ${SECRET_KEY:-development-only-change-me}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      LOGIN_RATE_LIMIT_PER_MINUTE: ${LOGIN_RATE_LIMIT_PER_MINUTE:-10}
+      MAX_FAILED_LOGINS: ${MAX_FAILED_LOGINS:-5}
+      LOCKOUT_MINUTES: ${LOCKOUT_MINUTES:-15}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-}
       AUTO_CREATE_SCHEMA: "false"
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     depends_on:
       postgres:
