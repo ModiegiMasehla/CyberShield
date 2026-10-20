@@ -1,24 +1,63 @@
+import ipaddress
 import re
 from collections import Counter
 
-IP = r"\d{1,3}(?:\.\d{1,3}){3}"
-FAIL = r"(?:failed|failure|invalid password|authentication failure)"
-FAILED = re.compile(rf"{FAIL}.*?(?P<ip>{IP})|(?P<ip2>{IP}).*{FAIL}", re.I)
+from .detection import rule_threshold
+
+IP_RE = re.compile(r"(?<!\d)\d{1,3}(?:\.\d{1,3}){3}(?!\d)")
+FAIL_RE = re.compile(r"failed|failure|invalid password|authentication failure", re.I)
 SENSITIVE = re.compile(r"/(?:admin|login|wp-admin|\.env|config)", re.I)
 MAX_LINES = 10000
-BRUTE_FORCE_THRESHOLD = 5
+MAX_LINE_CHARS = 4096  # longer lines are truncated: keeps work per line bounded
+BRUTE_FORCE_THRESHOLD = rule_threshold("BRUTE_FORCE")
 BRUTE_FORCE_HIGH = 20
-SENSITIVE_THRESHOLD = 10
+SENSITIVE_THRESHOLD = rule_threshold("SUSPICIOUS_ACTIVITY")
+
+
+def _valid_ips(line: str) -> list[tuple[int, int, str]]:
+    found = []
+    for m in IP_RE.finditer(line):
+        try:
+            ipaddress.IPv4Address(m.group())
+        except ValueError:
+            continue  # e.g. 999.1.1.1 or a version string
+        found.append((m.start(), m.end(), m.group()))
+    return found
+
+
+def failed_login_source(line: str) -> str | None:
+    """Return the IPv4 address blamed for a failed login on this line, or None.
+
+    Single pass over keyword and address matches (linear time). When several candidates exist, the one that
+    starts first wins: an address followed later by a failure keyword, or a keyword followed by an address.
+    """
+    line = line[:MAX_LINE_CHARS]
+    fails = list(FAIL_RE.finditer(line))
+    if not fails:
+        return None
+    ips = _valid_ips(line)
+    if not ips:
+        return None
+    candidates = []
+    before = next((ip for ip in ips if ip[1] <= fails[-1].start()), None)  # address ... keyword
+    if before:
+        candidates.append((before[0], before[2]))
+    for f in fails:  # keyword ... address
+        after = next((ip for ip in ips if ip[0] >= f.end()), None)
+        if after:
+            candidates.append((f.start(), after[2]))
+            break
+    return min(candidates)[1] if candidates else None
 
 
 def analyze_lines(lines):
     counts = Counter()
     sensitive = 0
     for line in lines[:MAX_LINES]:
-        m = FAILED.search(line)
-        if m:
-            counts[m.group("ip") or m.group("ip2")] += 1
-        if SENSITIVE.search(line):
+        source = failed_login_source(line)
+        if source:
+            counts[source] += 1
+        if SENSITIVE.search(line[:MAX_LINE_CHARS]):
             sensitive += 1
     alerts = []
     for ip, n in counts.items():
