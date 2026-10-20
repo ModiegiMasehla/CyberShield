@@ -2,8 +2,10 @@ from datetime import UTC, datetime, timedelta
 
 import pyotp
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -57,11 +59,14 @@ def _as_aware(dt: datetime) -> datetime:
 
 
 def _register_failed_login(db: Session, user: User, ip: str | None, reason: str) -> None:
-    user.failed_logins += 1
+    # Increment in SQL so concurrent guesses cannot overwrite each other and slip past the lockout.
+    db.execute(update(User).where(User.id == user.id).values(failed_logins=User.failed_logins + 1))
+    db.commit()
+    db.refresh(user)
     locked = user.failed_logins >= settings.max_failed_logins
     if locked:
         user.locked_until = datetime.now(UTC) + timedelta(minutes=settings.lockout_minutes)
-    db.commit()
+        db.commit()
     audit(db, user.id, "LOGIN_FAILED", reason, "FAILURE", ip)
     if locked:
         audit(db, user.id, "ACCOUNT_LOCKED", "auth", "SUCCESS", ip)
@@ -81,7 +86,12 @@ def register(data: RegisterIn, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(409, "Email already registered")
     user = User(email=data.email.lower(), password_hash=hash_password(data.password), role=Role.USER.value)
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Lost a race with a concurrent registration of the same email.
+        db.rollback()
+        raise HTTPException(409, "Email already registered") from None
     db.refresh(user)
     audit(db, user.id, "USER_REGISTERED", "auth", "SUCCESS", _ip(request))
     return {"id": user.id, "email": user.email, "role": user.role}
@@ -95,13 +105,18 @@ def login(data: LoginIn, request: Request, db: Session = Depends(get_db)):
         burn_password_check(data.password)
         audit(db, None, "LOGIN_FAILED", "unknown-user", "FAILURE", ip)
         raise HTTPException(401, "Invalid credentials")
-    if user.locked_until and _as_aware(user.locked_until) > datetime.now(UTC):
-        audit(db, user.id, "LOGIN_BLOCKED", "account-locked", "FAILURE", ip)
-        raise HTTPException(423, "Account temporarily locked")
+    if user.locked_until:
+        if _as_aware(user.locked_until) > datetime.now(UTC):
+            audit(db, user.id, "LOGIN_BLOCKED", "account-locked", "FAILURE", ip)
+            raise HTTPException(423, "Account temporarily locked")
+        # The lock has expired: start counting from zero so a single typo does not re-lock the account.
+        user.failed_logins = 0
+        user.locked_until = None
+        db.commit()
     if not verify_password(data.password, user.password_hash):
         _register_failed_login(db, user, ip, "bad-password")
         raise HTTPException(401, "Invalid credentials")
-    if user.mfa_enabled and (not data.otp or not verify_totp(user.mfa_secret, data.otp)):
+    if user.mfa_enabled and (not data.otp or not verify_totp(user.mfa_secret, data.otp, user.id)):
         _register_failed_login(db, user, ip, "bad-otp")
         raise HTTPException(401, "MFA verification required")
     user.failed_logins = 0
@@ -124,7 +139,8 @@ def change_password(
     db: Session = Depends(get_db),
 ):
     if not verify_password(data.current_password, user.password_hash):
-        audit(db, user.id, "PASSWORD_CHANGE", "auth", "FAILURE", _ip(request))
+        # Counts toward lockout so a stolen access token cannot be used to guess the current password.
+        _register_failed_login(db, user, _ip(request), "bad-current-password")
         raise HTTPException(401, "Current password is incorrect")
     errors = validate_password_policy(data.new_password)
     if data.new_password == data.current_password:
@@ -154,7 +170,7 @@ def mfa_setup(request: Request, user: User = Depends(current_user), db: Session 
 def mfa_enable(
     data: MFACodeIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
 ):
-    if not user.mfa_secret or not verify_totp(user.mfa_secret, data.code):
+    if not user.mfa_secret or not verify_totp(user.mfa_secret, data.code, user.id):
         raise HTTPException(400, "Invalid TOTP code")
     user.mfa_enabled = True
     db.commit()
@@ -194,7 +210,7 @@ def password_tool(data: PasswordAnalyzeIn):
 
 
 @router.get("/tools/network/info")
-def net_info(user: User = Depends(current_user)):
+def net_info(user: User = Depends(require_roles(*STAFF))):
     return network_info()
 
 
@@ -210,6 +226,7 @@ async def net_scan(
     try:
         ports = await scan_ports(data.target, data.start_port, data.end_port)
     except ValueError as e:
+        audit(db, user.id, "PORT_SCAN_BLOCKED", data.target[:250], "DENIED", _ip(request))
         raise HTTPException(400, str(e)) from None
     audit(db, user.id, "PORT_SCAN", data.target, "SUCCESS", _ip(request))
     return {"target": data.target, "ports": ports}
@@ -237,6 +254,7 @@ async def headers(
     try:
         result = await check_headers(data.url)
     except UnsafeTargetError as e:
+        audit(db, user.id, "WEB_HEADER_CHECK_BLOCKED", data.url[:250], "DENIED", _ip(request))
         raise HTTPException(400, str(e)) from None
     except Exception as e:
         raise HTTPException(400, f"Unable to safely inspect URL: {type(e).__name__}") from None
@@ -246,6 +264,7 @@ async def headers(
 
 @router.post("/tools/logs/analyze")
 async def logs(
+    request: Request,
     file: UploadFile = File(...),
     save_alerts: bool = False,
     user: User = Depends(require_roles(*STAFF)),
@@ -256,7 +275,16 @@ async def logs(
     raw = await file.read(MAX_LOG_BYTES + 1)
     if len(raw) > MAX_LOG_BYTES:
         raise HTTPException(413, "Log file too large")
-    result = analyze_lines(raw.decode("utf-8", errors="replace").splitlines())
+    # CPU-bound: keep it off the event loop so one upload cannot stall every other request.
+    result = await run_in_threadpool(analyze_lines, raw.decode("utf-8", errors="replace").splitlines())
+    audit(
+        db,
+        user.id,
+        "LOG_ANALYZED",
+        f"lines={result['lines_analyzed']} alerts={len(result['alerts'])} saved={save_alerts}",
+        "SUCCESS",
+        _ip(request),
+    )
     if save_alerts:
         for a in result["alerts"]:
             db.add(
@@ -283,6 +311,9 @@ def alerts(user: User = Depends(require_roles(*STAFF)), db: Session = Depends(ge
             "status": a.status,
             "source": a.source,
             "description": a.description,
+            "evidence": a.evidence,
+            "assigned_analyst_id": a.assigned_analyst_id,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
         }
         for a in rows
     ]
@@ -308,7 +339,7 @@ def update_alert(
     if not alert:
         raise HTTPException(404, "Alert not found")
     _validate_analyst(db, data.assigned_analyst_id)
-    for k, v in data.model_dump(exclude_none=True).items():
+    for k, v in data.model_dump(exclude_unset=True).items():
         setattr(alert, k, v)
     db.commit()
     audit(db, user.id, "ALERT_UPDATED", str(alert_id), "SUCCESS", _ip(request))
@@ -326,6 +357,10 @@ def incidents(user: User = Depends(require_roles(*STAFF)), db: Session = Depends
             "category": i.category,
             "status": i.status,
             "asset": i.affected_asset,
+            "description": i.description,
+            "resolution": i.resolution,
+            "assigned_analyst_id": i.assigned_analyst_id,
+            "created_at": i.created_at.isoformat() if i.created_at else None,
         }
         for i in rows
     ]
@@ -358,7 +393,7 @@ def update_incident(
     if not inc:
         raise HTTPException(404, "Incident not found")
     _validate_analyst(db, data.assigned_analyst_id)
-    for k, v in data.model_dump(exclude_none=True).items():
+    for k, v in data.model_dump(exclude_unset=True).items():
         setattr(inc, k, v)
     db.commit()
     audit(db, user.id, "INCIDENT_UPDATED", str(incident_id), "SUCCESS", _ip(request))
