@@ -2,6 +2,7 @@ import asyncio
 import ipaddress
 import platform
 import socket
+import struct
 
 COMMON_SERVICES = {
     22: "SSH",
@@ -15,18 +16,53 @@ COMMON_SERVICES = {
 MAX_PORTS = 1024
 
 
-def network_info():
-    hostname = socket.gethostname()
+def parse_default_gateway(route_table: str) -> str | None:
+    """Parse /proc/net/route text and return the default gateway address."""
+    for line in route_table.splitlines()[1:]:
+        fields = line.split()
+        if len(fields) >= 4 and fields[1] == "00000000" and int(fields[3], 16) & 2:  # RTF_GATEWAY
+            return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
+    return None
+
+
+def parse_nameservers(resolv_conf: str) -> list[str]:
+    servers = []
+    for line in resolv_conf.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] == "nameserver":
+            servers.append(parts[1])
+    return servers
+
+
+def _read(path: str) -> str:
     try:
-        local_ip = socket.gethostbyname(hostname)
-    except socket.gaierror:
-        local_ip = "unknown"
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    except OSError:
+        return ""
+
+
+def _local_ip() -> str:
+    # A UDP "connect" only selects a route; no packet is sent.
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("192.0.2.1", 9))
+            return s.getsockname()[0]
+    except OSError:
+        return "unknown"
+
+
+def network_info():
+    try:
+        interfaces = [name for _, name in socket.if_nameindex()]
+    except (OSError, AttributeError):
+        interfaces = []
     return {
-        "hostname": hostname,
-        "local_ip": local_ip,
-        "interfaces": [],
-        "dns": [],
-        "default_gateway": "not determined",
+        "hostname": socket.gethostname(),
+        "local_ip": _local_ip(),
+        "interfaces": interfaces,
+        "dns": parse_nameservers(_read("/etc/resolv.conf")),
+        "default_gateway": parse_default_gateway(_read("/proc/net/route")) or "not determined",
         "os": platform.platform(),
     }
 
