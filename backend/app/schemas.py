@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 Severity = Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
 IncidentStatusLit = Literal["OPEN", "INVESTIGATING", "CONTAINED", "ERADICATED", "RECOVERED", "CLOSED"]
@@ -49,12 +49,23 @@ class IncidentIn(BaseModel):
     affected_asset: str = Field(default="lab", max_length=255)
 
 
-class IncidentUpdateIn(BaseModel):
+class _PartialUpdate(BaseModel):
+    """PATCH body: omitted fields are untouched; only `assigned_analyst_id` may be set to null (unassign)."""
+
+    @model_validator(mode="after")
+    def reject_null_for_required_fields(self):
+        for name in self.model_fields_set - {"assigned_analyst_id"}:
+            if getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be null")
+        return self
+
+
+class IncidentUpdateIn(_PartialUpdate):
     status: IncidentStatusLit | None = None
     resolution: str | None = Field(default=None, max_length=5000)
     assigned_analyst_id: int | None = None
 
 
-class AlertUpdateIn(BaseModel):
+class AlertUpdateIn(_PartialUpdate):
     status: AlertStatusLit | None = None
     assigned_analyst_id: int | None = None
