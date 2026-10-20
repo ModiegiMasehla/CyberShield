@@ -22,14 +22,14 @@ Rules: 5 or more failures from one IP is BRUTE_FORCE (HIGH at 20 or more, otherw
 | qwerty | 0 | Very Weak |
 | letmein | 0 | Very Weak |
 | MyDogRex | 30 | Weak |
-| Welcome1 | 45 | Weak |
-| aaaa1111AAAA | 60 | Moderate |
-| Summer2024! | 60 | Moderate |
-| correct-horse-battery-staple-92! | 70 | Moderate |
-| Tr0ub4dor&3-horse-Staple | 85 | Strong |
-| k9#Lm2$vQx7!pTz4 | 85 | Strong |
+| Welcome1 | 25 | Weak |
+| aaaa1111AAAA | 45 | Weak |
+| Summer2024! | 30 | Weak |
+| correct-horse-battery-staple-92! | 90 | Strong |
+| Tr0ub4dor&3-horse-Staple | 100 | Strong |
+| k9#Lm2$vQx7!pTz4 | 95 | Strong |
 
-Known limitation: aaaa1111AAAA is rated Moderate because the analyzer scores character variety and does not penalize runs of 4+ repeated characters or dictionary-style patterns. Good example to discuss in the video or a future improvement.
+Pattern checks: common words (including leet-speak such as `p@ssw0rd`), keyboard/sequence runs, years and runs of 4+ identical characters lower the score, and a pattern-based password shorter than 16 characters can never be rated Strong. Length bonuses start at 16 characters, so long passphrases are rated fairly.
 
 ## URLs (POST /api/v1/tools/url/analyze)
 
@@ -41,12 +41,12 @@ Known limitation: aaaa1111AAAA is rated Moderate because the analyzer scores cha
 | http://192.168.1.5/login?redirect=http://evil.com%2Fx | HIGH | 70 |
 | https://secure.login.account.verify.bank.example.com/signin | LOW | 10 |
 | https://example.com/redirect?url=https://other.example.org | LOW | 10 |
-| https://user@example.com/reset | LOW | 15 |
-| https://xn--exmple-cua.com/login | LOW | 15 |
+| https://user@example.com/reset | MEDIUM | 40 |
+| https://xn--exmple-cua.com/login | MEDIUM | 30 |
 | ftp://files.example.com/data | HIGH | 90 |
 | not-a-url | HIGH | 90 |
 
-Known limitation: the @ and xn-- (punycode lookalike) cases only score LOW because each indicator adds a small score on its own.
+URL checks: `user@host` (embedded credentials, +40) and punycode `xn--` hostnames (+30) now reach MEDIUM. An `@` or `xn--` inside the path or query string is not suspicious and is no longer flagged. Obfuscated numeric hosts such as `http://2130706433/` add +25.
 
 ## Scan targets (POST /api/v1/tools/network/scan, admin or analyst)
 
