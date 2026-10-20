@@ -21,3 +21,11 @@ def test_production_accepts_strong_secret_and_skips_demo_seed():
 
 def test_development_seeds_by_default():
     assert Settings(environment="development").should_seed is True
+
+
+def test_empty_environment_values_fall_back_to_defaults(monkeypatch):
+    """docker-compose passes unset optional variables as empty strings; they must not break start-up."""
+    monkeypatch.setenv("SEED_DEMO_DATA", "")
+    monkeypatch.setenv("LOG_LEVEL", "")
+    s = Settings()
+    assert s.seed_demo_data is None and s.log_level == "INFO"

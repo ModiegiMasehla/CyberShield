@@ -3,7 +3,8 @@ import tempfile
 import uuid
 
 _tmp = tempfile.mkdtemp(prefix="cybershield-test-")
-os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
+# Throw-away SQLite by default; set TEST_DATABASE_URL (an empty database) to run the suite on PostgreSQL.
+os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{_tmp}/test.db"
 os.environ["SECRET_KEY"] = "test-secret-key-that-is-long-enough-for-hs256"
 os.environ["ENVIRONMENT"] = "development"
 os.environ["RATE_LIMIT_PER_MINUTE"] = "100000"

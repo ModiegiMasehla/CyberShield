@@ -25,6 +25,8 @@ def test_documented_sample_urls_match_expected_results():
         "https://example.com": ("LOW", 0),
         "http://example.com/login": ("MEDIUM", 30),
         "http://192.168.1.5/login?redirect=http://evil.com%2Fx": ("HIGH", 70),
+        "https://user@example.com/reset": ("MEDIUM", 40),
+        "https://xn--exmple-cua.com/login": ("MEDIUM", 30),
         "ftp://files.example.com/data": ("HIGH", 90),
         "not-a-url": ("HIGH", 90),
     }

@@ -1,3 +1,5 @@
+import time
+
 import pyotp
 from conftest import auth, login
 
@@ -69,7 +71,8 @@ def test_mfa_flow_and_setup_cannot_be_replaced(client, fresh_user):
     )
     assert client.post("/api/v1/auth/mfa/setup", headers=headers).status_code == 409
     assert login(client, email, password).status_code == 401
-    assert login(client, email, password, otp=totp.now()).status_code == 200
+    # TOTP codes are single-use: /mfa/enable consumed this step, so log in with the next step's code.
+    assert login(client, email, password, otp=totp.at(time.time() + 30)).status_code == 200
 
 
 def test_bad_otp_counts_toward_lockout(client, fresh_user):
