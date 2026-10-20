@@ -40,3 +40,8 @@ def detect(metrics):
                 }
             )
     return alerts
+
+
+def rule_threshold(rule_type: str) -> int:
+    """Threshold of the first rule with this alert type, so other analyzers share one definition."""
+    return next(r["threshold"] for r in RULES if r["type"] == rule_type)
