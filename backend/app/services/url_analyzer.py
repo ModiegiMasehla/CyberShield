@@ -2,6 +2,8 @@ import ipaddress
 import re
 from urllib.parse import parse_qs, urlparse
 
+NUMERIC_HOST = re.compile(r"(?:0x[0-9a-f]+|\d+)(?:\.(?:0x[0-9a-f]+|\d+))*", re.I)
+
 
 def analyze_url(url: str):
     findings, score = [], 0
@@ -20,7 +22,9 @@ def analyze_url(url: str):
         score += 20
         findings.append("URL uses an IP address instead of a domain.")
     except ValueError:
-        pass
+        if NUMERIC_HOST.fullmatch(parsed.hostname):
+            score += 25
+            findings.append("Obfuscated numeric host (decimal/hex/octal IP encoding).")
     if parsed.hostname.count(".") >= 4:
         score += 10
         findings.append("Excessive subdomain depth may warrant review.")
@@ -31,9 +35,12 @@ def analyze_url(url: str):
     if any(k.lower() in {"redirect", "url", "next", "return", "redirect_uri"} for k in q):
         score += 10
         findings.append("Redirect-like parameter detected; inspect destination handling.")
-    if re.search(r"@|xn--", url, re.I):
-        score += 15
-        findings.append("Potentially deceptive URL syntax detected.")
+    if parsed.username is not None:
+        score += 40
+        findings.append("URL embeds credentials ('user@host'); the real destination is the part after '@'.")
+    if any(label.startswith("xn--") for label in parsed.hostname.split(".")):
+        score += 30
+        findings.append("Punycode (xn--) hostname may impersonate another domain.")
     risk = "LOW" if score < 25 else "MEDIUM" if score < 55 else "HIGH"
     if not findings:
         findings.append("No obvious heuristic indicators found.")
