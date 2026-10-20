@@ -1,5 +1,8 @@
+import logging
+import re
 import threading
 import time
+import uuid
 from collections import defaultdict, deque
 
 from starlette.requests import Request
@@ -9,6 +12,49 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from .config import settings
 
 DOC_PATHS = ("/docs", "/redoc", "/openapi.json")
+REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
+access_logger = logging.getLogger("cybershield.access")
+
+
+class RequestContextMiddleware:
+    """Assigns a request id (echoed in `X-Request-ID`) and writes one access-log line per request.
+
+    Only method, path, status, duration, client and id are logged: never query strings, headers or bodies.
+    """
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        incoming = Request(scope).headers.get("x-request-id", "")
+        request_id = incoming if REQUEST_ID_RE.fullmatch(incoming) else uuid.uuid4().hex
+        scope.setdefault("state", {})["request_id"] = request_id
+        started = time.perf_counter()
+        status = 500
+
+        async def send_with_id(message: Message):
+            nonlocal status
+            if message["type"] == "http.response.start":
+                status = message["status"]
+                message.setdefault("headers", []).append((b"x-request-id", request_id.encode()))
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_id)
+        finally:
+            client = scope["client"][0] if scope.get("client") else "unknown"
+            access_logger.info(
+                "request_id=%s method=%s path=%s status=%s duration_ms=%.1f client=%s",
+                request_id,
+                scope["method"],
+                scope["path"],
+                status,
+                (time.perf_counter() - started) * 1000,
+                client,
+            )
 
 
 class SecurityHeadersMiddleware:
@@ -45,13 +91,24 @@ class SecurityHeadersMiddleware:
 
 
 class _SlidingWindow:
+    MAX_KEYS = 50_000
+
     def __init__(self):
         self.hits: dict[str, deque[float]] = defaultdict(deque)
         self.lock = threading.Lock()
+        self._last_sweep = time.monotonic()
+
+    def _sweep(self, now: float, window: float) -> None:
+        """Drop clients with no hits inside the window so memory stays bounded."""
+        for key in [k for k, q in self.hits.items() if not q or now - q[-1] > window]:
+            del self.hits[key]
+        self._last_sweep = now
 
     def allow(self, key: str, limit: int, window: float = 60.0) -> bool:
         now = time.monotonic()
         with self.lock:
+            if now - self._last_sweep > window or len(self.hits) > self.MAX_KEYS:
+                self._sweep(now, window)
             q = self.hits[key]
             while q and now - q[0] > window:
                 q.popleft()
