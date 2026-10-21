@@ -31,6 +31,7 @@ export default function App() {
     const onLogout = () => {
       setSession(null);
       setNotice("Session expired. Please sign in again.");
+      setTab("overview");
     };
     window.addEventListener(LOGOUT_EVENT, onLogout);
     return () => window.removeEventListener(LOGOUT_EVENT, onLogout);

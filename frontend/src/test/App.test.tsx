@@ -74,3 +74,38 @@ it("returns to the sign-in page with a notice when the session expires", async (
   await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Session expired"));
   expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
 });
+
+it("resets a staff tab after expiry before an ordinary user signs in", async () => {
+  const user = userEvent.setup();
+  saveSession({ token: "admin", role: "ADMIN" });
+  vi.mocked(fetch).mockImplementation(async (url) =>
+    String(url).endsWith("/incidents")
+      ? json({ detail: "Invalid or expired token" }, 401)
+      : String(url).endsWith("/auth/login")
+        ? json({ access_token: "user", token_type: "bearer", role: "USER" })
+        : json(DASH));
+  render(<App />);
+  await user.click(await screen.findByRole("tab", { name: "Incidents" }));
+  await screen.findByRole("button", { name: "Sign in" });
+  await user.type(screen.getByLabelText("Email"), "user@example.com");
+  await user.type(screen.getByLabelText("Password"), "password");
+  await user.click(screen.getByRole("button", { name: "Sign in" }));
+  expect(await screen.findByText("Security Score")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.queryByRole("tab", { name: "Incidents" })).not.toBeInTheDocument();
+});
+
+it("rejects log uploads above the backend's decimal 2 MB limit", async () => {
+  const user = userEvent.setup();
+  saveSession({ token: "admin", role: "ADMIN" });
+  vi.mocked(fetch).mockResolvedValue(json(DASH));
+  render(<App />);
+  await user.click(await screen.findByRole("tab", { name: "Lab tools" }));
+  const input = screen.getByLabelText("Log file (max 2 MB)");
+  await user.upload(input, new File([new Uint8Array(2_000_001)], "large.log", { type: "text/plain" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("File is larger than 2 MB");
+  expect(screen.getByRole("button", { name: "Analyze" })).toBeDisabled();
+  await user.upload(input, new File([new Uint8Array(2_000_000)], "allowed.log", { type: "text/plain" }));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Analyze" })).toBeEnabled();
+});

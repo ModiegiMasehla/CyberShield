@@ -3,7 +3,7 @@ import { post, request } from "../api";
 import type { HeaderResult, LogResult, ScanResult } from "../types";
 import { ErrorNote, Panel, Severity, useAction } from "./ui";
 
-const MAX_LOG_BYTES = 2 * 1024 * 1024;
+const MAX_LOG_BYTES = 2_000_000; // Match the API's decimal 2 MB limit.
 
 function HeadersTool() {
   const [url, setUrl] = useState("http://127.0.0.1:8000");
