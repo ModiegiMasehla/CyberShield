@@ -33,10 +33,16 @@ On start the backend applies the Alembic migrations (`AUTO_CREATE_SCHEMA=false` 
 
 ### Backend
 
+The examples below use Bash. On Windows PowerShell, use `py -3.12 -m venv .venv`,
+then `.\.venv\Scripts\Activate.ps1`; set environment variables with
+`$env:DATABASE_URL = "sqlite:///./cybershield.db"` and
+`$env:SECRET_KEY = "replace-with-a-long-development-secret"`.
+
 ```bash
 cd backend
 python3.12 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
@@ -50,6 +56,8 @@ uvicorn app.main:app --reload
 ```
 
 ### Frontend
+
+Use Node.js 22.12+ (CI uses Node.js 22) and npm.
 
 ```bash
 cd frontend
@@ -95,9 +103,12 @@ cd ../frontend && npm test
 ruff check backend/app backend/tests backend/alembic
 ruff format --check backend/app backend/tests backend/alembic
 bandit -r backend/app -ll
-pip-audit -r backend/requirements.txt
+pip-audit --local
 ```
 
+Run these commands with the backend virtual environment activated and
+`requirements-dev.txt` installed. The audit checks the installed application,
+transitive dependencies, and development tools used by the test run, matching CI.
 
 ## Demo credentials
 
@@ -141,6 +152,20 @@ Known limitations:
 - **`ValidationError ... environment`** at start-up: `ENVIRONMENT` is not one of development/test/staging/production.
 - **`SECRET_KEY must be a random value`**: set a 32+ character secret (see `.env.example`) when `ENVIRONMENT` is staging or production.
 - **Existing token suddenly rejected after upgrading, or after a password change**: tokens are bound to the password they were issued for; sign in again.
-- **`no such column` / missing table on a local SQLite file**: delete `cybershield.db` and restart, or run `alembic upgrade head` on a database that was created by Alembic.
+- **`no such column` / missing table on a local SQLite file**: back up the database first. Run `alembic upgrade head` on a database managed by Alembic. For disposable demo data created with `AUTO_CREATE_SCHEMA=true`, move the old database aside and restart to create a new one.
 - **Frontend shows "Cannot reach the server"**: start the backend and check `VITE_API_URL` and `CORS_ORIGINS`.
 - **Accounts locked**: five failed sign-ins lock an account for 15 minutes (`MAX_FAILED_LOGINS`, `LOCKOUT_MINUTES`).
+- **`test_duplicate_config_module_is_gone` fails with `DID NOT RAISE ImportError`**:
+  remove the obsolete `backend/app/api/config.py` from your checkout. The only settings
+  module is `backend/app/config.py`; do not restore the duplicate or weaken the test.
+  When copying this submission over an existing checkout, remember that copying files
+  does not remove obsolete files. Stage the deletion with
+  `git add -u -- backend/app/api/config.py`.
+
+## Final QA
+
+See `documents/FINAL_QA_REPORT.md` for changes, executed checks, and remaining
+verification limits. The submission archive excludes Git metadata, virtual
+environments, local IDE settings, caches, and build output. Apply its changes to
+your existing repository to preserve its history; no commits or pushes were
+performed as part of the audit.
