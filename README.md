@@ -29,14 +29,13 @@ Then open:
 
 On start the backend applies the Alembic migrations (`AUTO_CREATE_SCHEMA=false` in Compose) and, in development, seeds fictional demo data. The frontend container runs the Vite dev server; build `frontend/` with `npm run build` and serve `dist/` behind a reverse proxy for anything beyond local use.
 
+On Linux, if Docker reports a permission error, add your user to the `docker` group (`sudo usermod -aG docker "$USER"`, then log out and back in) or prefix the commands with `sudo`.
+
 ## Local development
 
-### Backend
+The commands below use Bash and work on Linux, WSL and macOS. Windows PowerShell notes follow the backend steps.
 
-The examples below use Bash. On Windows PowerShell, use `py -3.12 -m venv .venv`,
-then `.\.venv\Scripts\Activate.ps1`; set environment variables with
-`$env:DATABASE_URL = "sqlite:///./cybershield.db"` and
-`$env:SECRET_KEY = "replace-with-a-long-development-secret"`.
+### Backend
 
 ```bash
 cd backend
@@ -47,6 +46,10 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
+On Debian/Ubuntu you may first need `sudo apt install python3-venv`. If Python 3.12 is not installed, `python3 -m venv .venv` works with any Python 3.12+ interpreter.
+
+The virtual environment uses the Linux layout (`.venv/bin/python`). Activation is optional: you can call the interpreter directly, for example `.venv/bin/python -m pytest`.
+
 For a local SQLite development database:
 
 ```bash
@@ -55,9 +58,13 @@ export SECRET_KEY='replace-with-a-long-development-secret'
 uvicorn app.main:app --reload
 ```
 
+On Windows PowerShell, use `py -3.12 -m venv .venv`, then `.\.venv\Scripts\Activate.ps1`; set environment variables with
+`$env:DATABASE_URL = "sqlite:///./cybershield.db"` and
+`$env:SECRET_KEY = "replace-with-a-long-development-secret"`. The interpreter there is `.venv\Scripts\python.exe`.
+
 ### Frontend
 
-Use Node.js 22.12+ (CI uses Node.js 22) and npm.
+Use Node.js 22.12+ (CI uses Node.js 22.22.2 or newer) and npm. Check with `node --version`; on Linux, `nvm install 22 && nvm use 22` installs a suitable version.
 
 ```bash
 cd frontend
@@ -73,6 +80,7 @@ Set `VITE_API_URL=http://localhost:8000/api/v1` in `frontend/.env`.
 
 ```bash
 cd backend
+source .venv/bin/activate
 alembic upgrade head      # apply schema
 alembic downgrade base    # roll back
 ```
@@ -81,7 +89,7 @@ Docker Compose sets `AUTO_CREATE_SCHEMA=false` and runs `alembic upgrade head` o
 
 ## Production notes
 
-- `ENVIRONMENT=production` refuses to start with the default or a short `SECRET_KEY` (32+ random characters required), disables `/docs`, enables HSTS and does **not** seed the demo accounts (override with `SEED_DEMO_DATA=true` only for demos).
+- `ENVIRONMENT=production` refuses to start with the default or a short `SECRET_KEY` (32+ random characters required), disables `/docs`, enables HSTS and does **not** seed the demo accounts (override with `SEED_DEMO_DATA=true` only for demos). Generate a key with `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`.
 - `ENVIRONMENT` must be `development`, `test`, `staging` or `production`; any other value (for example `prod`) stops the app at start-up instead of silently running with development defaults. `staging` has the same secret and CORS rules as production and does not seed demo data.
 - Behind a reverse proxy, start uvicorn with `--proxy-headers` and set `FORWARDED_ALLOW_IPS` to the proxy address; otherwise every client shares the proxy's IP and therefore one rate-limit bucket.
 - Rate limiting (`RATE_LIMIT_PER_MINUTE`, `LOGIN_RATE_LIMIT_PER_MINUTE`) is in-memory per process; use a shared store (e.g. Redis) or a reverse proxy when running several workers.
@@ -90,6 +98,7 @@ Docker Compose sets `AUTO_CREATE_SCHEMA=false` and runs `alembic upgrade head` o
 
 ```bash
 cd backend
+source .venv/bin/activate
 pip install -r requirements-dev.txt
 pytest --cov=app                      # SQLite (default, throw-away file)
 TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/empty_db pytest   # PostgreSQL
@@ -99,16 +108,26 @@ cd ../frontend && npm test
 
 ## Security tooling
 
+From the repository root, with the backend virtual environment activated and
+`requirements-dev.txt` installed:
+
 ```bash
+source backend/.venv/bin/activate
 ruff check backend/app backend/tests backend/alembic
 ruff format --check backend/app backend/tests backend/alembic
 bandit -r backend/app -ll
 pip-audit --local
 ```
 
-Run these commands with the backend virtual environment activated and
-`requirements-dev.txt` installed. The audit checks the installed application,
-transitive dependencies, and development tools used by the test run, matching CI.
+Without activating the environment, call the interpreter explicitly:
+
+```bash
+backend/.venv/bin/python -m ruff check backend/app backend/tests backend/alembic
+backend/.venv/bin/python -m pip_audit --local
+```
+
+The audit checks the installed application, transitive dependencies, and
+development tools used by the test run, matching CI.
 
 ## Demo credentials
 
@@ -152,14 +171,16 @@ Known limitations:
 - **`ValidationError ... environment`** at start-up: `ENVIRONMENT` is not one of development/test/staging/production.
 - **`SECRET_KEY must be a random value`**: set a 32+ character secret (see `.env.example`) when `ENVIRONMENT` is staging or production.
 - **Existing token suddenly rejected after upgrading, or after a password change**: tokens are bound to the password they were issued for; sign in again.
-- **`no such column` / missing table on a local SQLite file**: back up the database first. Run `alembic upgrade head` on a database managed by Alembic. For disposable demo data created with `AUTO_CREATE_SCHEMA=true`, move the old database aside and restart to create a new one.
+- **`no such column` / missing table on a local SQLite file**: back up the database first. Run `alembic upgrade head` on a database managed by Alembic. For disposable demo data created with `AUTO_CREATE_SCHEMA=true`, move the old database aside (`mv cybershield.db cybershield.db.bak`) and restart to create a new one.
 - **Frontend shows "Cannot reach the server"**: start the backend and check `VITE_API_URL` and `CORS_ORIGINS`.
 - **Accounts locked**: five failed sign-ins lock an account for 15 minutes (`MAX_FAILED_LOGINS`, `LOCKOUT_MINUTES`).
+- **`.venv/Scripts/python.exe: No such file or directory`** on Linux: the Linux virtual environment has `bin/`, not `Scripts/`. Use `.venv/bin/python` or `source .venv/bin/activate`.
 - **`test_duplicate_config_module_is_gone` fails with `DID NOT RAISE ImportError`**:
   remove the obsolete `backend/app/api/config.py` from your checkout. The only settings
   module is `backend/app/config.py`; do not restore the duplicate or weaken the test.
   When copying this submission over an existing checkout, remember that copying files
-  does not remove obsolete files. Stage the deletion with
+  does not remove obsolete files. Delete and stage the removal with
+  `rm -f backend/app/api/config.py` and
   `git add -u -- backend/app/api/config.py`.
 
 ## Final QA

@@ -29,8 +29,8 @@ and automated verification, not a certification or proof that every possible def
 
 - Added `.vscode/` to `.gitignore`.
 - CI now upgrades pip and audits the installed test environment, including transitive and development dependencies.
-- Added Windows setup guidance and Node requirements to README, explained how to record the
-  obsolete-file deletion, and replaced destructive SQLite troubleshooting advice with backup guidance.
+- README setup instructions use Bash/Linux commands (`.venv/bin/python`) as the primary path, with Windows PowerShell notes retained. Node requirements were added, the obsolete-file deletion is explained with `rm -f` and `git add -u`, and destructive SQLite troubleshooting advice was replaced with backup guidance.
+- The separate Git guide has a Linux (bash) version alongside the original PowerShell version.
 - Final ZIP excludes Git metadata, virtual environments, dependencies, IDE directories, caches,
   databases, coverage output and compiled frontend output. Fictional sample logs and all required
   source, lockfiles, migrations, environment templates, CI and documentation are retained.
@@ -42,7 +42,10 @@ and automated verification, not a certification or proof that every possible def
 ## Verification results
 
 Environment: Windows, Python 3.12.14, Node.js 24.19.0 and npm 10.9.2. CI targets Python
-3.12 and Node.js 22; Linux CI itself was not executed from this environment.
+3.12 and Node.js 22; Linux CI itself was not executed from this environment. The Linux command
+forms in the README and in the reproduction commands below are the same checks with
+`bin/python` in place of `Scripts/python.exe`; they were not separately executed on Linux
+in this audit.
 
 | Check | Observed result |
 | --- | --- |
@@ -101,22 +104,30 @@ The five-page Git guide was rendered to images and visually inspected.
 
 ## Reproduction commands
 
-From `backend/`, with the installed Python 3.12+ environment:
+From the repository root on Linux, WSL or macOS, create the environment if needed:
 
-```text
-python -m pip install --upgrade pip
-python -m pip install -r requirements-dev.txt
-python -m pytest --cov=app --cov-report=term-missing
-python -m ruff check app tests alembic
-python -m ruff format --check app tests alembic
-python -m bandit -r app -ll
-python -m pip_audit --local
-python -m pip check
+```bash
+python3.12 -m venv backend/.venv
 ```
 
-From `frontend/`, with Node.js 22.12+ and npm:
+From `backend/`, using the environment's interpreter directly (no activation needed):
 
-```text
+```bash
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pytest --cov=app --cov-report=term-missing
+.venv/bin/python -m ruff check app tests alembic
+.venv/bin/python -m ruff format --check app tests alembic
+.venv/bin/python -m bandit -r app -ll
+.venv/bin/python -m pip_audit --local
+.venv/bin/python -m pip check
+```
+
+On Windows, use `.venv/Scripts/python.exe` in place of `.venv/bin/python`.
+
+From `frontend/`, with Node.js 22.22.2 or newer and npm:
+
+```bash
 npm ci
 npm run lint
 npm test
