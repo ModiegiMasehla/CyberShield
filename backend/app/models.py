@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -90,4 +90,4 @@ class Vulnerability(Base):
     recommendation: Mapped[str] = mapped_column(Text)
     evidence: Mapped[str] = mapped_column(Text, default="")
     cve_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    cvss: Mapped[float | None] = mapped_column(nullable=True)
+    cvss: Mapped[float | None] = mapped_column(Float, nullable=True)
